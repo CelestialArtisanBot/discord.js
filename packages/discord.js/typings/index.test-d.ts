@@ -1,7 +1,23 @@
 /* eslint-disable no-lone-blocks, @typescript-eslint/unbound-method, @typescript-eslint/ban-ts-comment, no-param-reassign, id-length */
 import type { ChildProcess } from 'node:child_process';
 import type { Worker } from 'node:worker_threads';
-import type { ChatInputCommandBuilder, ContextMenuCommandBuilder } from '@discordjs/builders';
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ChannelSelectMenuBuilder,
+  createComponentBuilder,
+  EmbedBuilder,
+  MentionableSelectMenuBuilder,
+  MessageBuilder,
+  ModalBuilder,
+  PrimaryButtonBuilder,
+  RoleSelectMenuBuilder,
+  StringSelectMenuBuilder,
+  TextInputBuilder,
+  UserSelectMenuBuilder,
+  type ChatInputCommandBuilder,
+  type ContextMenuCommandBuilder,
+} from '@discordjs/builders';
 import type { ReadonlyCollection } from '@discordjs/collection';
 import type {
   APIButtonComponent,
@@ -10,7 +26,6 @@ import type {
   APIInteractionDataResolvedChannel,
   APIInteractionDataResolvedGuildMember,
   APIInteractionGuildMember,
-  APIMessage,
   APIPartialChannel,
   APIPartialGuild,
   APIRole,
@@ -25,6 +40,7 @@ import {
   ApplicationCommandOptionType,
   ApplicationCommandPermissionType,
   ApplicationCommandType,
+  ApplicationIntegrationType,
   AuditLogEvent,
   ButtonStyle,
   ChannelType,
@@ -46,6 +62,8 @@ import type {
   AnnouncementChannel,
   AnyThreadChannel,
   ApplicationCommand,
+  ApplicationCommandAttachmentOption,
+  ApplicationCommandAttachmentOptionData,
   ApplicationCommandChannelOption,
   ApplicationCommandChannelOptionData,
   ApplicationCommandChoicesData,
@@ -67,7 +85,6 @@ import type {
   AutoModerationRule,
   AutoModerationRuleManager,
   Awaitable,
-  ButtonBuilder,
   ButtonComponent,
   ButtonComponentData,
   ButtonInteraction,
@@ -99,7 +116,9 @@ import type {
   Entitlement,
   FetchedThreads,
   FetchedThreadsMore,
+  FetchPinnedMessagesResponse,
   FileComponentData,
+  FileUploadComponentData,
   ForumChannel,
   Guild,
   GuildApplicationCommandManager,
@@ -142,7 +161,6 @@ import type {
   MessageManager,
   MessageMentions,
   MessageReaction,
-  ModalBuilder,
   ModalSubmitInteraction,
   NonThreadGuildBasedChannel,
   PartialDMChannel,
@@ -198,37 +216,29 @@ import type {
   User,
   VoiceBasedChannel,
   VoiceChannel,
+  Invite,
+  GuildInvite,
+  AuthorizingIntegrationOwners,
+  VoiceServerUpdateData,
 } from './index.js';
 import {
-  ActionRowBuilder,
-  AttachmentBuilder,
-  ChannelSelectMenuBuilder,
   Client,
   Collection,
-  createComponentBuilder,
-  EmbedBuilder,
   Events,
   IntentsBitField,
-  MentionableSelectMenuBuilder,
   Options,
   PermissionsBitField,
-  PrimaryButtonBuilder,
   Status,
-  StringSelectMenuBuilder,
-  TextInputBuilder,
   resolveColor,
-  RoleSelectMenuBuilder,
   ShardEvents,
   TextDisplayComponentData,
   ThumbnailComponentData,
   UnfurledMediaItemData,
   UserContextMenuCommandInteraction,
   UserMention,
-  UserSelectMenuBuilder,
   UserSelectMenuComponent,
   UserSelectMenuInteraction,
   Webhook,
-  WebhookClient,
 } from './index.js';
 
 // Test type transformation:
@@ -260,6 +270,10 @@ if (client.isReady()) {
 } else {
   expectType<Client>(client);
 }
+
+expectType<Promise<Invite>>(client.fetchInvite('https://discord.gg/djs'));
+expectType<Promise<Invite<true>>>(client.fetchInvite('https://discord.gg/djs', { withCounts: true }));
+expectNotType<Promise<Invite<true>>>(client.fetchInvite('https://discord.gg/djs', { withCounts: false }));
 
 const testGuildId = '222078108977594368'; // DJS
 const testUserId = '987654321098765432'; // example id
@@ -369,7 +383,7 @@ client.on('interactionCreate', async interaction => {
   // @ts-expect-error double nested components array
   await interaction.reply({ content: 'Hi!', components: [[button]] });
 
-  void new ActionRowBuilder({});
+  new ActionRowBuilder({});
 
   // @ts-expect-error button as top-level component
   await interaction.reply({ content: 'Hi!', components: [button] });
@@ -406,8 +420,15 @@ client.on('interactionCreate', async interaction => {
   }
 });
 
-client.on('inviteCreate', ({ client }) => expectType<Client<true>>(client));
-client.on('inviteDelete', ({ client }) => expectType<Client<true>>(client));
+client.on('inviteCreate', invite => {
+  expectType<GuildInvite>(invite);
+  expectType<Client<true>>(invite.client);
+});
+
+client.on('inviteDelete', invite => {
+  expectType<GuildInvite>(invite);
+  expectType<Client<true>>(invite.client);
+});
 
 // This is to check that stuff is the right type
 declare const assertIsMessage: (m: Promise<Message>) => void;
@@ -441,15 +462,9 @@ client.on('messageCreate', async message => {
   assertIsMessage(client.channels.createMessage(channel, {}));
   assertIsMessage(client.channels.createMessage(channel, { embeds: [] }));
 
-  const attachment = new AttachmentBuilder('file.png');
   const embed = new EmbedBuilder();
-  assertIsMessage(channel.send({ files: [attachment] }));
   assertIsMessage(channel.send({ embeds: [embed] }));
-  assertIsMessage(channel.send({ embeds: [embed], files: [attachment] }));
-
-  assertIsMessage(client.channels.createMessage(channel, { files: [attachment] }));
   assertIsMessage(client.channels.createMessage(channel, { embeds: [embed] }));
-  assertIsMessage(client.channels.createMessage(channel, { embeds: [embed], files: [attachment] }));
 
   if (message.inGuild()) {
     expectAssignable<Message<true>>(message);
@@ -1371,6 +1386,10 @@ client.on('userUpdate', ({ client: oldClient }, { client: newClient }) => {
   expectType<Client<true>>(newClient);
 });
 
+client.on('voiceServerUpdate', data => {
+  expectType<VoiceServerUpdateData>(data);
+});
+
 client.on('voiceStateUpdate', ({ client: oldClient }, { client: newClient }) => {
   expectType<Client<true>>(oldClient);
   expectType<Client<true>>(newClient);
@@ -1526,6 +1545,8 @@ expectType<SendMethod<true>['send']>(voiceChannel.send);
 expectAssignable<SendMethod>(user);
 expectAssignable<SendMethod>(guildMember);
 
+expectType<Promise<Message<false>>>(client.users.send(user, 'test'));
+
 expectType<Promise<AnnouncementChannel>>(textChannel.setType(ChannelType.GuildAnnouncement));
 expectType<Promise<TextChannel>>(announcementChannel.setType(ChannelType.GuildText));
 
@@ -1650,6 +1671,21 @@ declare const applicationCommandChannelOption: ApplicationCommandChannelOption;
   applicationCommandChannelOption.channelTypes = [] as const;
 }
 
+declare const applicationCommandAttachmentOptionData: ApplicationCommandAttachmentOptionData;
+declare const applicationCommandAttachmentOption: ApplicationCommandAttachmentOption;
+{
+  applicationCommandAttachmentOptionData.fileTypes = ['image', '.pdf'] as const;
+  applicationCommandAttachmentOptionData.file_types = ['video', '.mov'] as const;
+  applicationCommandAttachmentOption.fileTypes = ['audio', '.flac'] as const;
+
+  expectNotAssignable<ApplicationCommandOptionData>({
+    description: 'Upload a file',
+    fileTypes: ['pdf'],
+    name: 'file',
+    type: ApplicationCommandOptionType.Attachment,
+  });
+}
+
 declare const applicationNonChoiceOptionData: ApplicationCommandOptionData & {
   type: CommandOptionNonChoiceResolvableType;
 };
@@ -1756,7 +1792,7 @@ declare const guildChannelManager: GuildChannelManager;
     expectType<Promise<Message<true>>>(messages.crosspost('1234567890'));
     expectType<Promise<Message<true>>>(messages.edit('1234567890', 'text'));
     expectType<Promise<Message<true>>>(messages.fetch('1234567890'));
-    expectType<Promise<Collection<Snowflake, Message<true>>>>(messages.fetchPinned());
+    expectType<Promise<FetchPinnedMessagesResponse<true>>>(messages.fetchPins());
     expectType<Guild>(message.guild);
     expectType<Snowflake>(message.guildId);
     expectType<GuildTextBasedChannel>(message.channel.messages.channel);
@@ -1769,7 +1805,7 @@ declare const guildChannelManager: GuildChannelManager;
   expectType<DMMessageManager>(messages);
   expectType<Promise<Message>>(messages.edit('1234567890', 'text'));
   expectType<Promise<Message>>(messages.fetch('1234567890'));
-  expectType<Promise<Collection<Snowflake, Message>>>(messages.fetchPinned());
+  expectType<Promise<FetchPinnedMessagesResponse>>(messages.fetchPins());
   expectType<Guild | null>(message.guild);
   expectType<Snowflake | null>(message.guildId);
   expectType<DMChannel | GuildTextBasedChannel | PartialGroupDMChannel>(message.channel.messages.channel);
@@ -2252,6 +2288,10 @@ client.on('interactionCreate', async interaction => {
         interaction.options.getChannel('test', false, [ChannelType.GuildForum, ChannelType.GuildVoice]),
       );
       expectType<MediaChannel>(interaction.options.getChannel('test', true, [ChannelType.GuildMedia]));
+
+      const resolvedChannel = interaction.options.getChannel('test', true);
+      expectType<Readonly<PermissionsBitField> | null>(resolvedChannel.permissions);
+      expectType<Readonly<PermissionsBitField> | null>(resolvedChannel.appPermissions);
     } else {
       expectType<ChatInputCommandInteraction>(interaction);
       expectType<Promise<InteractionCallbackResponse>>(interaction.reply({ withResponse: true }));
@@ -2570,17 +2610,81 @@ await chatInputInteraction.showModal({
   custom_id: 'abc',
   components: [
     {
-      components: [
-        {
-          custom_id: 'aa',
-          label: 'label',
-          style: TextInputStyle.Short,
-          type: ComponentType.TextInput,
-        },
-      ],
-      type: ComponentType.ActionRow,
+      component: {
+        type: ComponentType.StringSelect,
+        id: 2,
+        custom_id: 'aa',
+        options: [{ label: 'a', value: 'b' }],
+      },
+      type: ComponentType.Label,
+      label: 'yo',
+    },
+    {
+      component: {
+        type: ComponentType.FileUpload,
+        custom_id: 'upload',
+        file_types: ['image', '.pdf'],
+      },
+      type: ComponentType.Label,
+      label: 'upload',
     },
   ],
+});
+
+await chatInputInteraction.showModal({
+  title: 'abc',
+  customId: 'abc',
+  components: [
+    {
+      type: ComponentType.Label,
+      component: {
+        type: ComponentType.TextInput,
+        style: TextInputStyle.Short,
+        customId: 'aa',
+      },
+      label: 'yo',
+    },
+    {
+      type: ComponentType.Label,
+      component: {
+        type: ComponentType.UserSelect,
+        customId: 'user',
+      },
+      label: 'aa',
+    },
+    {
+      type: ComponentType.Label,
+      component: {
+        type: ComponentType.RoleSelect,
+        customId: 'role',
+      },
+      label: 'bb',
+    },
+    {
+      type: ComponentType.Label,
+      component: {
+        type: ComponentType.ChannelSelect,
+        customId: 'channel',
+        channelTypes: [ChannelType.GuildText, ChannelType.GuildVoice],
+      },
+      label: 'cc',
+    },
+    {
+      type: ComponentType.Label,
+      component: {
+        type: ComponentType.FileUpload,
+        customId: 'upload',
+        fileTypes: ['video', '.mp4', '.mov'],
+      },
+      label: 'upload',
+    },
+  ],
+});
+
+expectNotAssignable<FileUploadComponentData>({
+  customId: 'upload',
+  fileTypes: ['pdf'],
+  type: ComponentType.FileUpload,
 });
 
 declare const stringSelectMenuComp: StringSelectMenuComponent;
@@ -2629,18 +2733,13 @@ expectType<UserMention>(user.toString());
 expectType<UserMention>(guildMember.toString());
 
 declare const webhook: Webhook;
-declare const webhookClient: WebhookClient;
 declare const interactionWebhook: InteractionWebhook;
 declare const snowflake: Snowflake;
 
-expectType<Promise<Message>>(webhook.send('content'));
-expectType<Promise<Message>>(webhook.editMessage(snowflake, 'content'));
-expectType<Promise<Message>>(webhook.fetchMessage(snowflake));
+expectType<Promise<Message<true>>>(webhook.send('content'));
+expectType<Promise<Message<true>>>(webhook.editMessage(snowflake, 'content'));
+expectType<Promise<Message<true>>>(webhook.fetchMessage(snowflake));
 expectType<Promise<Webhook>>(webhook.edit({ name: 'name' }));
-
-expectType<Promise<APIMessage>>(webhookClient.send('content'));
-expectType<Promise<APIMessage>>(webhookClient.editMessage(snowflake, 'content'));
-expectType<Promise<APIMessage>>(webhookClient.fetchMessage(snowflake));
 
 expectType<Client<true>>(interactionWebhook.client);
 expectType<Promise<Message>>(interactionWebhook.send('content'));
@@ -2985,4 +3084,30 @@ await guildScheduledEventManager.edit(snowflake, { recurrenceRule: null });
     // Invalid property
     byMonth: [GuildScheduledEventRecurrenceRuleMonth.May],
   });
+}
+
+await textChannel.send(
+  new MessageBuilder()
+    .setContent(':)')
+    .addAttachments(attachment => attachment.setId(1).setFileData(':)').setFilename('smiley.txt')),
+);
+
+await textChannel.send({
+  files: [
+    {
+      attachment: 'https://example.com/voice-message.ogg',
+      duration: 2,
+      waveform: 'AFUqPDw3Eg2hh4+gopOYj4xthU4=',
+    },
+  ],
+  flags: MessageFlags.IsVoiceMessage,
+});
+
+declare const authorizingIntegrationOwners: AuthorizingIntegrationOwners;
+{
+  expectType<Snowflake | null>(authorizingIntegrationOwners.guildId);
+  expectType<Guild | null>(authorizingIntegrationOwners.guild);
+  expectType<Snowflake | null>(authorizingIntegrationOwners.userId);
+  expectType<User | null>(authorizingIntegrationOwners.user);
+  expectType<Snowflake | undefined>(authorizingIntegrationOwners[ApplicationIntegrationType.GuildInstall]);
 }

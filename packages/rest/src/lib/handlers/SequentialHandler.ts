@@ -247,7 +247,7 @@ export class SequentialHandler implements IHandler {
 			// Let library users know they have hit a rate limit
 			this.manager.emit(RESTEvents.RateLimited, rateLimitData);
 			// Determine whether a RateLimitError should be thrown
-			await onRateLimit(this.manager, rateLimitData);
+			await onRateLimit(this.manager, rateLimitData, requestData);
 
 			// When not erroring, emit debug for what is happening
 			if (isGlobal) {
@@ -363,19 +363,23 @@ export class SequentialHandler implements IHandler {
 				timeout = this.getTimeToReset(routeId);
 			}
 
-			await onRateLimit(this.manager, {
-				global: isGlobal,
-				method,
-				url,
-				route: routeId.bucketRoute,
-				majorParameter: this.majorParameter,
-				hash: this.hash,
-				limit,
-				timeToReset: timeout,
-				retryAfter,
-				sublimitTimeout: sublimitTimeout ?? 0,
-				scope,
-			});
+			await onRateLimit(
+				this.manager,
+				{
+					global: isGlobal,
+					method,
+					url,
+					route: routeId.bucketRoute,
+					majorParameter: this.majorParameter,
+					hash: this.hash,
+					limit,
+					timeToReset: timeout,
+					retryAfter,
+					sublimitTimeout: sublimitTimeout ?? 0,
+					scope,
+				},
+				requestData,
+			);
 
 			this.debug(
 				[
@@ -420,7 +424,7 @@ export class SequentialHandler implements IHandler {
 			// Since this is not a server side issue, the next request should pass, so we don't bump the retries counter
 			return this.runRequest(routeId, url, options, requestData, retries);
 		} else {
-			const handled = await handleErrors(this.manager, res, method, url, requestData, retries);
+			const handled = await handleErrors(this.manager, res, method, url, requestData, retries, routeId);
 			if (handled === null) {
 				// eslint-disable-next-line no-param-reassign
 				return this.runRequest(routeId, url, options, requestData, ++retries);

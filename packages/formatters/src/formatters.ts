@@ -1,4 +1,3 @@
-import type { URL } from 'node:url';
 import type { Snowflake } from 'discord-api-types/globals';
 
 /**
@@ -225,6 +224,16 @@ export function linkedRoleMention<RoleId extends Snowflake>(roleId: RoleId): `<i
 }
 
 /**
+ * Formats a game id into a game profile mention.
+ *
+ * @typeParam GameId - This is inferred by the supplied game id
+ * @param gameId - The game id to format
+ */
+export function gameProfileMention<GameId extends Snowflake>(gameId: GameId): `<@$${GameId}>` {
+	return `<@$${gameId}>`;
+}
+
+/**
  * Formats an application command name and id into an application command mention.
  *
  * @typeParam CommandId - This is inferred by the supplied command id
@@ -289,8 +298,8 @@ export function chatInputApplicationCommandMention<
 >(
 	commandId: CommandId,
 	commandName: CommandName,
-	subcommandName?: SubcommandName | undefined,
-	subcommandGroupName?: SubcommandGroupName | undefined,
+	subcommandName?: SubcommandName,
+	subcommandGroupName?: SubcommandGroupName,
 ):
 	| `</${CommandName} ${SubcommandGroupName} ${SubcommandName}:${CommandId}>`
 	| `</${CommandName} ${SubcommandName}:${CommandId}>`
@@ -659,6 +668,59 @@ export function applicationDirectory<ApplicationId extends Snowflake, SKUId exte
 }
 
 /**
+ * Formats an email address into an email mention.
+ *
+ * @typeParam Email - This is inferred by the supplied email address
+ * @param email - The email address to format
+ */
+export function email<Email extends string>(email: Email): `<${Email}>`;
+
+/**
+ * Formats an email address and headers into an email mention.
+ *
+ * @typeParam Email - This is inferred by the supplied email address
+ * @param email - The email address to format
+ * @param headers - Optional headers to include in the email mention
+ */
+export function email<Email extends string>(
+	email: Email,
+	headers: Record<string, string | readonly string[]> | undefined,
+): `<${Email}?${string}>`;
+
+/**
+ * Formats an email address into an email mention.
+ *
+ * @typeParam Email - This is inferred by the supplied email address
+ * @param email - The email address to format
+ * @param headers - Optional headers to include in the email mention
+ */
+export function email<Email extends string>(email: Email, headers?: Record<string, string | readonly string[]>) {
+	if (headers) {
+		const searchParams = new URLSearchParams(
+			Object.fromEntries(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value])),
+		);
+
+		return `<${email}?${searchParams.toString()}>` as const;
+	}
+
+	return `<${email}>` as const;
+}
+
+/**
+ * Formats a phone number into a phone number mention.
+ *
+ * @typeParam PhoneNumber - This is inferred by the supplied phone number
+ * @param phoneNumber - The phone number to format. Must start with a `+` sign.
+ */
+export function phoneNumber<PhoneNumber extends `+${string}`>(phoneNumber: PhoneNumber) {
+	if (!phoneNumber.startsWith('+')) {
+		throw new Error('Phone number must start with a "+" sign.');
+	}
+
+	return `<${phoneNumber}>` as const;
+}
+
+/**
  * The {@link https://discord.com/developers/docs/reference#message-formatting-timestamp-styles | message formatting timestamp styles}
  * supported by Discord.
  */
@@ -671,11 +733,11 @@ export const TimestampStyles = {
 	ShortTime: 't',
 
 	/**
-	 * Long time format, consisting of hours, minutes, and seconds.
+	 * Medium time format, consisting of hours, minutes, and seconds.
 	 *
 	 * @example `16:20:30`
 	 */
-	LongTime: 'T',
+	MediumTime: 'T',
 
 	/**
 	 * Short date format, consisting of day, month, and year.
@@ -687,23 +749,37 @@ export const TimestampStyles = {
 	/**
 	 * Long date format, consisting of day, month, and year.
 	 *
-	 * @example `20 April 2021`
+	 * @example `April 20, 2021`
 	 */
 	LongDate: 'D',
 
 	/**
-	 * Short date-time format, consisting of short date and short time formats.
+	 * Long date-short time format, consisting of long date and short time.
 	 *
-	 * @example `20 April 2021 16:20`
+	 * @example `April 20, 2021 at 16:20`
 	 */
-	ShortDateTime: 'f',
+	LongDateShortTime: 'f',
 
 	/**
-	 * Long date-time format, consisting of long date and short time formats.
+	 * Full date-short time format, consisting of full date and short time.
 	 *
-	 * @example `Tuesday, 20 April 2021 16:20`
+	 * @example `Tuesday, April 20, 2021 at 16:20`
 	 */
-	LongDateTime: 'F',
+	FullDateShortTime: 'F',
+
+	/**
+	 * Short date, short time format, consisting of short date and short time.
+	 *
+	 * @example `20/04/2021, 16:20`
+	 */
+	ShortDateShortTime: 's',
+
+	/**
+	 * Short date, medium time format, consisting of short date and medium time.
+	 *
+	 * @example `20/04/2021, 16:20:30`
+	 */
+	ShortDateMediumTime: 'S',
 
 	/**
 	 * Relative time format, consisting of a relative duration format.

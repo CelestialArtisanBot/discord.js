@@ -2,22 +2,21 @@ import type { Awaitable } from '@discordjs/util';
 import type { APIGatewayBotInfo } from 'discord-api-types/v10';
 import type { SessionInfo, WebSocketManager, WebSocketManagerOptions } from '../../ws/WebSocketManager.js';
 
-export interface FetchingStrategyOptions
-	extends Pick<
-		WebSocketManagerOptions,
-		| 'compression'
-		| 'encoding'
-		| 'handshakeTimeout'
-		| 'helloTimeout'
-		| 'identifyProperties'
-		| 'initialPresence'
-		| 'intents'
-		| 'largeThreshold'
-		| 'readyTimeout'
-		| 'token'
-		| 'useIdentifyCompression'
-		| 'version'
-	> {
+export interface FetchingStrategyOptions extends Pick<
+	WebSocketManagerOptions,
+	| 'compression'
+	| 'encoding'
+	| 'handshakeTimeout'
+	| 'helloTimeout'
+	| 'identifyProperties'
+	| 'initialPresence'
+	| 'intents'
+	| 'largeThreshold'
+	| 'readyTimeout'
+	| 'token'
+	| 'useIdentifyCompression'
+	| 'version'
+> {
 	readonly gatewayInformation: APIGatewayBotInfo;
 	readonly shardCount: number;
 }
@@ -52,7 +51,7 @@ export async function managerToFetchingStrategyOptions(manager: WebSocketManager
 		useIdentifyCompression: manager.options.useIdentifyCompression,
 		version: manager.options.version,
 
-		gatewayInformation: await manager.fetchGatewayInformation(),
-		shardCount: await manager.getShardCount(),
+		gatewayInformation: manager.getGatewayInformation(),
+		shardCount: manager.getShardCount(),
 	};
 }

@@ -1,276 +1,136 @@
-import { REST } from '@discordjs/rest';
-import type { RESTGetAPIGatewayBotResult, APIGatewayBotInfo, GatewaySendPayload } from 'discord-api-types/v10';
-import { GatewayOpcodes, Routes } from 'discord-api-types/v10';
-import { MockAgent, type Interceptable } from 'undici';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import type { GatewaySendPayload } from 'discord-api-types/v10';
+import { GatewayOpcodes } from 'discord-api-types/v10';
+import { describe, expect, test, vi } from 'vitest';
 import { WebSocketManager, type IShardingStrategy } from '../../src/index.js';
+import { mockGatewayInformation } from '../gateway.mock.js';
 
-vi.useFakeTimers();
+class MockStrategy implements IShardingStrategy {
+	public spawn = vi.fn();
 
-let mockAgent: MockAgent;
-let mockPool: Interceptable;
+	public connect = vi.fn();
 
-beforeEach(() => {
-	mockAgent = new MockAgent();
-	mockAgent.disableNetConnect();
-	mockPool = mockAgent.get('https://discord.com');
-});
+	public destroy = vi.fn();
 
-const NOW = vi.fn().mockReturnValue(Date.now());
-global.Date.now = NOW;
+	public send = vi.fn();
 
-test('fetch gateway information', async () => {
-	const rest = new REST().setAgent(mockAgent).setToken('A-Very-Fake-Token');
+	public fetchStatus = vi.fn();
+}
+
+test('connect requires gateway information', async () => {
 	const manager = new WebSocketManager({
 		token: 'A-Very-Fake-Token',
 		intents: 0,
-		async fetchGatewayInformation() {
-			return rest.get(Routes.gatewayBot()) as Promise<RESTGetAPIGatewayBotResult>;
-		},
 	});
 
-	const data: APIGatewayBotInfo = {
-		shards: 1,
-		session_start_limit: {
-			max_concurrency: 3,
-			reset_after: 60,
-			remaining: 3,
-			total: 3,
-		},
-		url: 'wss://gateway.discord.gg',
-	};
+	// @ts-expect-error: Testing the runtime check for a missing gatewayInformation
+	await expect(manager.connect()).rejects.toThrow(TypeError);
+});
 
-	const fetch = vi.fn(() => ({
-		data,
-		statusCode: 200,
-		responseOptions: {
-			headers: {
-				'content-type': 'application/json',
-			},
-		},
-	}));
+test('gateway information is not available before connecting', () => {
+	const manager = new WebSocketManager({
+		token: 'A-Very-Fake-Token',
+		intents: 0,
+	});
 
-	mockPool
-		.intercept({
-			path: '/api/v10/gateway/bot',
-			method: 'GET',
-		})
-		.reply(fetch);
-
-	const initial = await manager.fetchGatewayInformation();
-	expect(initial).toEqual(data);
-	expect(fetch).toHaveBeenCalledOnce();
-
-	fetch.mockClear();
-
-	const cached = await manager.fetchGatewayInformation();
-	expect(cached).toEqual(data);
-	expect(fetch).not.toHaveBeenCalled();
-
-	fetch.mockClear();
-	mockPool
-		.intercept({
-			path: '/api/v10/gateway/bot',
-			method: 'GET',
-		})
-		.reply(fetch);
-
-	const forced = await manager.fetchGatewayInformation(true);
-	expect(forced).toEqual(data);
-	expect(fetch).toHaveBeenCalledOnce();
-
-	fetch.mockClear();
-	mockPool
-		.intercept({
-			path: '/api/v10/gateway/bot',
-			method: 'GET',
-		})
-		.reply(fetch);
-
-	NOW.mockReturnValue(Number.POSITIVE_INFINITY);
-	const cacheExpired = await manager.fetchGatewayInformation();
-	expect(cacheExpired).toEqual(data);
-	expect(fetch).toHaveBeenCalledOnce();
+	expect(() => manager.getGatewayInformation()).toThrow(Error);
+	expect(() => manager.getShardCount()).toThrow(Error);
 });
 
 describe('get shard count', () => {
-	test('with shard count', async () => {
-		const rest = new REST().setAgent(mockAgent).setToken('A-Very-Fake-Token');
+	test('with no shard count or ids', async () => {
+		const manager = new WebSocketManager({
+			token: 'A-Very-Fake-Token',
+			intents: 0,
+			buildStrategy: () => new MockStrategy(),
+		});
+
+		await manager.connect({ gatewayInformation: mockGatewayInformation });
+
+		expect(manager.getShardCount()).toBe(mockGatewayInformation.shards);
+	});
+
+	test('with shard count', () => {
 		const manager = new WebSocketManager({
 			token: 'A-Very-Fake-Token',
 			intents: 0,
 			shardCount: 2,
-			async fetchGatewayInformation() {
-				return rest.get(Routes.gatewayBot()) as Promise<RESTGetAPIGatewayBotResult>;
-			},
 		});
 
-		expect(await manager.getShardCount()).toBe(2);
+		expect(manager.getShardCount()).toBe(2);
 	});
 
-	test('with shard ids array', async () => {
-		const rest = new REST().setAgent(mockAgent).setToken('A-Very-Fake-Token');
+	test('with shard ids array', () => {
 		const shardIds = [5, 9];
 		const manager = new WebSocketManager({
 			token: 'A-Very-Fake-Token',
 			intents: 0,
 			shardIds,
-			async fetchGatewayInformation() {
-				return rest.get(Routes.gatewayBot()) as Promise<RESTGetAPIGatewayBotResult>;
-			},
 		});
 
-		expect(await manager.getShardCount()).toBe(shardIds.at(-1)! + 1);
+		expect(manager.getShardCount()).toBe(shardIds.at(-1)! + 1);
 	});
 
-	test('with shard id range', async () => {
-		const rest = new REST().setAgent(mockAgent).setToken('A-Very-Fake-Token');
+	test('with shard id range', () => {
 		const shardIds = { start: 5, end: 9 };
 		const manager = new WebSocketManager({
 			token: 'A-Very-Fake-Token',
 			intents: 0,
 			shardIds,
-			async fetchGatewayInformation() {
-				return rest.get(Routes.gatewayBot()) as Promise<RESTGetAPIGatewayBotResult>;
-			},
 		});
 
-		expect(await manager.getShardCount()).toBe(shardIds.end + 1);
+		expect(manager.getShardCount()).toBe(shardIds.end + 1);
 	});
 });
 
 test('update shard count', async () => {
-	const rest = new REST().setAgent(mockAgent).setToken('A-Very-Fake-Token');
 	const manager = new WebSocketManager({
 		token: 'A-Very-Fake-Token',
 		intents: 0,
 		shardCount: 2,
-		async fetchGatewayInformation() {
-			return rest.get(Routes.gatewayBot()) as Promise<RESTGetAPIGatewayBotResult>;
-		},
+		buildStrategy: () => new MockStrategy(),
 	});
 
-	const data: APIGatewayBotInfo = {
-		shards: 1,
-		session_start_limit: {
-			max_concurrency: 3,
-			reset_after: 60,
-			remaining: 3,
-			total: 3,
-		},
-		url: 'wss://gateway.discord.gg',
-	};
-
-	const fetch = vi.fn(() => ({
-		data,
-		statusCode: 200,
-		responseOptions: {
-			headers: {
-				'content-type': 'application/json',
-			},
-		},
-	}));
-
-	mockPool
-		.intercept({
-			path: '/api/v10/gateway/bot',
-			method: 'GET',
-		})
-		.reply(fetch);
-
-	expect(await manager.getShardCount()).toBe(2);
-	expect(fetch).not.toHaveBeenCalled();
-
-	fetch.mockClear();
-	mockPool
-		.intercept({
-			path: '/api/v10/gateway/bot',
-			method: 'GET',
-		})
-		.reply(fetch);
+	expect(manager.getShardCount()).toBe(2);
 
 	await manager.updateShardCount(3);
-	expect(await manager.getShardCount()).toBe(3);
-	expect(fetch).toHaveBeenCalled();
+	expect(manager.getShardCount()).toBe(3);
+	expect(manager.getShardIds()).toStrictEqual([0, 1, 2]);
 });
 
-test('it handles passing in both shardIds and shardCount', async () => {
-	const rest = new REST().setAgent(mockAgent).setToken('A-Very-Fake-Token');
+test('it handles passing in both shardIds and shardCount', () => {
 	const shardIds = { start: 2, end: 3 };
 	const manager = new WebSocketManager({
 		token: 'A-Very-Fake-Token',
 		intents: 0,
 		shardIds,
 		shardCount: 4,
-		async fetchGatewayInformation() {
-			return rest.get(Routes.gatewayBot()) as Promise<RESTGetAPIGatewayBotResult>;
-		},
 	});
 
-	expect(await manager.getShardCount()).toBe(4);
-	expect(await manager.getShardIds()).toStrictEqual([2, 3]);
+	expect(manager.getShardCount()).toBe(4);
+	expect(manager.getShardIds()).toStrictEqual([2, 3]);
 });
 
 test('strategies', async () => {
-	class MockStrategy implements IShardingStrategy {
-		public spawn = vi.fn();
-
-		public connect = vi.fn();
-
-		public destroy = vi.fn();
-
-		public send = vi.fn();
-
-		public fetchStatus = vi.fn();
-	}
-
 	const strategy = new MockStrategy();
 
-	const rest = new REST().setAgent(mockAgent).setToken('A-Very-Fake-Token');
 	const shardIds = [0, 1, 2];
+
 	const manager = new WebSocketManager({
 		token: 'A-Very-Fake-Token',
 		intents: 0,
-		rest,
 		shardIds,
 		buildStrategy: () => strategy,
 	});
 
-	const data: APIGatewayBotInfo = {
-		shards: 1,
-		session_start_limit: {
-			max_concurrency: 3,
-			reset_after: 60,
-			remaining: 3,
-			total: 3,
-		},
-		url: 'wss://gateway.discord.gg',
-	};
-
-	const fetch = vi.fn(() => ({
-		data,
-		statusCode: 200,
-		responseOptions: {
-			headers: {
-				'content-type': 'application/json',
-			},
-		},
-	}));
-
-	mockPool
-		.intercept({
-			path: '/api/v10/gateway/bot',
-			method: 'GET',
-		})
-		.reply(fetch);
-
-	await manager.connect();
+	await manager.connect({ gatewayInformation: mockGatewayInformation });
+	expect(manager.getGatewayInformation()).toBe(mockGatewayInformation);
 	expect(strategy.spawn).toHaveBeenCalledWith(shardIds);
 	expect(strategy.connect).toHaveBeenCalled();
 
 	const destroyOptions = { reason: ':3' };
 	await manager.destroy(destroyOptions);
 	expect(strategy.destroy).toHaveBeenCalledWith(destroyOptions);
+	expect(() => manager.getGatewayInformation()).toThrow(Error);
 
 	const send: GatewaySendPayload = {
 		op: GatewayOpcodes.RequestGuildMembers,
